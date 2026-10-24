@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import * as SplashScreen from 'expo-splash-screen';
 import { useState } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
@@ -33,7 +33,7 @@ export function AnimatedSplashOverlay() {
     },
   });
 
-  const image = <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />;
+  const brand = <View style={styles.brandLockup}><View style={styles.brandMark}><Text style={styles.brandMarkText}>C</Text></View><Text style={styles.brandName}>CLOVER & ASH</Text></View>;
 
   return animate ? (
     <Animated.View
@@ -44,7 +44,7 @@ export function AnimatedSplashOverlay() {
         }
       })}
       style={styles.splashOverlay}>
-      {image}
+      {brand}
     </Animated.View>
   ) : (
     <View
@@ -54,7 +54,7 @@ export function AnimatedSplashOverlay() {
         });
       }}
       style={styles.splashOverlay}>
-      {image}
+      {brand}
     </View>
   );
 }
@@ -140,9 +140,33 @@ const styles = StyleSheet.create({
   },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#208AEF',
+    backgroundColor: '#183C35',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+  },
+  brandLockup: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  brandMark: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    borderWidth: 1,
+    borderColor: '#A9B8A7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandMarkText: {
+    color: '#F5F1E5',
+    fontFamily: 'Georgia',
+    fontSize: 40,
+  },
+  brandName: {
+    color: '#F5F1E5',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2,
   },
 });
