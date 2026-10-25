@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Clover & Ash",
+    "name": "Mehar Juice",
     "slug": "OrderingApp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-          "backgroundColor": "#183C35",
+        "backgroundColor": "#183C35",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
