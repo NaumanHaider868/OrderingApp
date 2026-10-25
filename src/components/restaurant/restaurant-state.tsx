@@ -1,6 +1,17 @@
-import { createContext, Dispatch, SetStateAction, useContext, useState } from 'react';
+import {
+    createContext,
+    Dispatch,
+    SetStateAction,
+    useContext,
+    useState,
+} from "react";
 
-import { initialTables, initialTickets, salesSummary } from '@/data/mock-restaurant';
+import {
+    initialTables,
+    initialTickets,
+    salesSummary,
+    StaffRole,
+} from "@/data/mock-restaurant";
 
 const RestaurantStateContext = createContext<{
   tables: typeof initialTables;
@@ -9,15 +20,38 @@ const RestaurantStateContext = createContext<{
   setTickets: Dispatch<SetStateAction<typeof initialTickets>>;
   summary: typeof salesSummary;
   setSummary: Dispatch<SetStateAction<typeof salesSummary>>;
+  role: StaffRole | null;
+  setRole: Dispatch<SetStateAction<StaffRole | null>>;
+  staffName: string;
+  setStaffName: Dispatch<SetStateAction<string>>;
 } | null>(null);
 
-export function RestaurantStateProvider({ children }: { children: React.ReactNode }) {
+export function RestaurantStateProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [tables, setTables] = useState(initialTables);
   const [tickets, setTickets] = useState(initialTickets);
   const [summary, setSummary] = useState(salesSummary);
+  const [role, setRole] = useState<StaffRole | null>(null);
+  const [staffName, setStaffName] = useState("");
 
   return (
-    <RestaurantStateContext.Provider value={{ tables, setTables, tickets, setTickets, summary, setSummary }}>
+    <RestaurantStateContext.Provider
+      value={{
+        tables,
+        setTables,
+        tickets,
+        setTickets,
+        summary,
+        setSummary,
+        role,
+        setRole,
+        staffName,
+        setStaffName,
+      }}
+    >
       {children}
     </RestaurantStateContext.Provider>
   );
@@ -25,6 +59,7 @@ export function RestaurantStateProvider({ children }: { children: React.ReactNod
 
 export function useRestaurantState() {
   const context = useContext(RestaurantStateContext);
-  if (!context) throw new Error('RestaurantStateProvider is missing from the app layout.');
+  if (!context)
+    throw new Error("RestaurantStateProvider is missing from the app layout.");
   return context;
 }
