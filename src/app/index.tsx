@@ -1,240 +1,1016 @@
-import { useState } from 'react';
-import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useMemo, useState } from "react";
+import {
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { OrderComposer } from '@/components/restaurant/order-composer';
-import { currency, KitchenTicket, OrderLine, TableStatus } from '@/data/mock-restaurant';
-import { useRestaurantState } from '@/components/restaurant/restaurant-state';
+import { useRestaurantState } from "@/components/restaurant/restaurant-state";
+import {
+    currency,
+    iceCreamFlavors,
+    KitchenTicket,
+    menuCategories,
+    MenuCategory,
+    menuItems,
+    OrderLine,
+} from "@/data/mock-restaurant";
 
-const palette = {
-  ink: '#202B26', muted: '#78827A', paper: '#F7F6F1', white: '#FFFFFF', line: '#E6E4DA',
-  green: '#244C3C', paleGreen: '#E7EFE8', amber: '#C87945', paleAmber: '#F4E9DC',
-  paleBlue: '#E7EEF1', blue: '#4F707C',
+const colors = {
+  ink: "#173840",
+  muted: "#58777D",
+  paper: "#F1FAF8",
+  white: "#FFFFFF",
+  line: "#D4E9E7",
+  green: "#21886B",
+  paleGreen: "#E2F4EA",
+  blue: "#48AFCF",
+  paleBlue: "#E4F5FB",
+  deepBlue: "#247797",
 };
 
-const statusColors: Record<TableStatus, { bg: string; text: string; dot: string }> = {
-  Available: { bg: palette.paleGreen, text: palette.green, dot: '#538466' },
-  Dining: { bg: '#F1EEE4', text: '#80653C', dot: '#C38A44' },
-  'In kitchen': { bg: palette.paleBlue, text: palette.blue, dot: '#6B8791' },
-  'Ready to serve': { bg: palette.paleAmber, text: '#9B5B31', dot: palette.amber },
-};
+export default function MenuScreen() {
+  const {
+    tables,
+    setTables,
+    tickets,
+    setTickets,
+    summary,
+    setSummary,
+    role,
+    staffName,
+    setRole,
+    setStaffName,
+  } = useRestaurantState();
+  const [category, setCategory] = useState<MenuCategory>("Ice Cream");
+  const [cart, setCart] = useState<OrderLine[]>([]);
+  const [scoopFlavors, setScoopFlavors] = useState([""]);
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [confirmTable, setConfirmTable] = useState<number | null>(null);
+  const [wide, setWide] = useState(false);
+  const total = useMemo(
+    () => cart.reduce((sum, item) => sum + item.quantity * item.price, 0),
+    [cart],
+  );
+  const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const canAddIceCream = scoopFlavors.every(Boolean);
+  const visibleItems = menuItems.filter((item) => item.category === category);
 
-export default function FloorScreen() {
-  const [availableWidth, setAvailableWidth] = useState(0);
-  const { tables, setTables, tickets, setTickets, summary, setSummary } = useRestaurantState();
-  const [selectedTable, setSelectedTable] = useState<number | null>(null);
-  const [filter, setFilter] = useState<'All tables' | TableStatus>('All tables');
-  const wide = availableWidth >= 760;
-  const tableFilters: ('All tables' | TableStatus)[] = ['All tables', 'Available', 'Dining', 'In kitchen', 'Ready to serve'];
-  const visibleTables = filter === 'All tables' ? tables : tables.filter((table) => table.status === filter);
-  const liveCount = tickets.filter((ticket) => ticket.status !== 'Ready').length;
+  function updateQuantity(itemId: string, change: number) {
+    const menuItem = menuItems.find((item) => item.id === itemId);
+    setCart((current) => {
+      const existing = current.find((item) => item.itemId === itemId);
+      if (!existing && (!menuItem || change < 1)) return current;
+      if (!existing && menuItem)
+        return [
+          ...current,
+          { itemId, name: menuItem.name, quantity: 1, price: menuItem.price },
+        ];
+      return current
+        .map((item) =>
+          item.itemId === itemId
+            ? { ...item, quantity: item.quantity + change }
+            : item,
+        )
+        .filter((item) => item.quantity > 0);
+    });
+  }
 
-  function sendOrder(items: OrderLine[], note: string) {
-    if (selectedTable === null) return;
+  function addIceCream() {
+    if (!canAddIceCream) return;
+    const name = `Ice cream · ${scoopFlavors.length} scoop${scoopFlavors.length === 1 ? "" : "s"} (${scoopFlavors.join(", ")})`;
+    const itemId = `ice-cream-${scoopFlavors.join("-").toLowerCase()}`;
+    setCart((current) => {
+      const existing = current.find((item) => item.itemId === itemId);
+      if (existing) {
+        return current.map((item) =>
+          item.itemId === itemId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        );
+      }
+      return [
+        ...current,
+        { itemId, name, quantity: 1, price: scoopFlavors.length * 350 },
+      ];
+    });
+    setScoopFlavors([""]);
+  }
+
+  function sendOrder(tableNumber: number) {
+    if (!cart.length) return;
     const orderNumber = `#${1050 + tickets.length}`;
-    const total = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
     const newTicket: KitchenTicket = {
-      id: orderNumber, table: selectedTable, guestCount: 2, waiter: 'Maya', age: 'just now', status: 'New', items, note: note || undefined,
+      id: orderNumber,
+      table: tableNumber,
+      guestCount: 2,
+      waiter: staffName || "Staff",
+      age: "just now",
+      status: "New",
+      items: cart,
     };
     setTickets((current) => [newTicket, ...current]);
     setSummary((current) => {
-      const orderCount = Number(current.orders);
-      const nextOrderCount = orderCount + 1;
-      const priorSales = Number(current.sales.replace(/[$,]/g, ''));
-      const priorAverage = Number(current.average.replace(/[$,]/g, ''));
+      const nextOrderCount = current.todayOrders + 1;
+      const nextTodaySales = current.todaySales + total;
       return {
         ...current,
-        sales: currency(priorSales + total),
-        orders: String(nextOrderCount),
-        average: currency((priorAverage * orderCount + total) / nextOrderCount),
-        guests: String(Number(current.guests) + newTicket.guestCount),
+        todaySales: nextTodaySales,
+        todayOrders: nextOrderCount,
+        thisWeekOrders: current.thisWeekOrders + 1,
+        thisMonthSales: current.thisMonthSales + total,
+        average:
+          (current.average * current.todayOrders + total) / nextOrderCount,
+        guests: String(Number(current.guests) + 2),
       };
     });
-    setTables((current) => current.map((table) => table.number === selectedTable
-      ? { ...table, status: 'In kitchen', order: orderNumber, total: (table.total ?? 0) + total }
-      : table));
-    setSelectedTable(null);
+    setTables((current) =>
+      current.map((table) =>
+        table.number === tableNumber
+          ? {
+              ...table,
+              status: "In kitchen",
+              order: orderNumber,
+              total: (table.total ?? 0) + total,
+            }
+          : table,
+      ),
+    );
+    setCart([]);
+    setTablePickerOpen(false);
+    setConfirmTable(null);
+  }
+
+  function signOut() {
+    setRole(null);
+    setStaffName("");
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
-        onLayout={(event: LayoutChangeEvent) => setAvailableWidth(event.nativeEvent.layout.width)}
-        contentContainerStyle={[styles.content, wide && styles.wideContent]}>
-        <View style={styles.topBar}>
-          <View style={styles.brandLockup}>
-            <View style={styles.brandMark}><Text style={styles.brandMarkText}>C</Text></View>
-            <View><Text style={styles.brandName}>CLOVER & ASH</Text><Text style={styles.brandCaption}>RESTAURANT · SERVICE DESK</Text></View>
+        onLayout={(event) => setWide(event.nativeEvent.layout.width >= 760)}
+        contentContainerStyle={[styles.content, wide && styles.wideContent]}
+      >
+        <View style={styles.header}>
+          <View style={styles.brand}>
+            <View style={styles.brandMark}>
+              <Text style={styles.brandMarkText}>M</Text>
+            </View>
+            <View>
+              <Text style={styles.brandName}>MEHAR JUICE</Text>
+              <Text style={styles.brandCaption}>ORDER MENU</Text>
+            </View>
           </View>
-          <View style={styles.shiftTag}><View style={styles.liveDot} /><Text style={styles.shiftText}>DINNER SERVICE</Text></View>
-        </View>
-
-        <View style={styles.greetingRow}>
-          <View style={styles.greetingCopy}>
-            <Text style={styles.dateText}>SATURDAY, OCTOBER 25</Text>
-            <Text style={styles.greeting}>Good evening, Maya.</Text>
-            <Text style={styles.subGreeting}>The room is moving well. Here’s your floor.</Text>
-          </View>
-          <Pressable onPress={() => setSelectedTable(2)} style={styles.newOrderButton}>
-            <Text style={styles.newOrderPlus}>+</Text><Text style={styles.newOrderText}>New order</Text>
+          <Pressable onPress={signOut} style={styles.account}>
+            <View style={styles.accountDot} />
+            <Text style={styles.accountText}>
+              {staffName} · {role}
+            </Text>
+            <Text style={styles.signOut}>Sign out</Text>
           </Pressable>
         </View>
 
-        <View style={[styles.metrics, wide && styles.metricsWide]}>
-          <Metric label="NET SALES" value={summary.sales} note={`${summary.salesChange} vs last Saturday`} accent={palette.green} />
-          <Metric label="ORDERS" value={summary.orders} note="Across 8 active tables" accent={palette.amber} />
-          <Metric label="AVG. CHECK" value={summary.average} note={`${summary.guests} guests served`} accent={palette.blue} />
+        <View style={styles.heading}>
+          <View style={styles.headingText}>
+            <Text style={styles.kicker}>MENU</Text>
+            <Text style={styles.title}>Choose items</Text>
+            <Text style={styles.subtitle}>
+              Build one order across any of the menu sections.
+            </Text>
+          </View>
+          <View style={styles.menuCount}>
+            <Text style={styles.menuCountValue}>{menuItems.length}</Text>
+            <Text style={styles.menuCountLabel}>MENU ITEMS</Text>
+          </View>
         </View>
 
-        <View style={[styles.mainColumns, wide && styles.mainColumnsWide]}>
-          <View style={styles.floorColumn}>
-            <View style={styles.sectionHeading}>
-              <View><Text style={styles.sectionEyebrow}>LIVE FLOOR</Text><Text style={styles.sectionTitle}>Tables <Text style={styles.sectionCount}>· {tables.length}</Text></Text></View>
-              <View style={styles.occupancy}><Text style={styles.occupancyStrong}>5</Text><Text style={styles.occupancyText}> / 8 occupied</Text></View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categories}
+        >
+          {menuCategories.map((item) => (
+            <Pressable
+              key={item}
+              onPress={() => setCategory(item)}
+              style={[
+                styles.categoryTab,
+                category === item && styles.categoryTabActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryText,
+                  category === item && styles.categoryTextActive,
+                ]}
+              >
+                {item}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <View style={[styles.main, wide && styles.mainWide]}>
+          <View style={styles.menuColumn}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{category}</Text>
+              <Text style={styles.sectionDetail}>
+                {visibleItems.length} choices
+              </Text>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-              {tableFilters.map((item) => (
-                <Pressable key={item} onPress={() => setFilter(item)} style={[styles.filterChip, filter === item && styles.filterChipActive]}>
-                  <Text style={[styles.filterText, filter === item && styles.filterTextActive]}>{item}</Text>
+            {category === "Ice Cream" && (
+              <View style={styles.scoopBuilder}>
+                <View style={styles.builderHeader}>
+                  <View>
+                    <Text style={styles.builderTitle}>Build your scoops</Text>
+                    <Text style={styles.builderDetail}>
+                      Pick a flavor for every scoop.
+                    </Text>
+                  </View>
+                  <View style={styles.stepper}>
+                    <Pressable
+                      accessibilityLabel="Remove a scoop"
+                      onPress={() =>
+                        setScoopFlavors((current) =>
+                          current.length > 1 ? current.slice(0, -1) : current,
+                        )
+                      }
+                      style={styles.stepButton}
+                    >
+                      <Text style={styles.stepText}>−</Text>
+                    </Pressable>
+                    <Text style={styles.stepCount}>{scoopFlavors.length}</Text>
+                    <Pressable
+                      accessibilityLabel="Add a scoop"
+                      onPress={() =>
+                        setScoopFlavors((current) => [...current, ""])
+                      }
+                      style={styles.stepButton}
+                    >
+                      <Text style={styles.stepText}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                {scoopFlavors.map((flavor, index) => (
+                  <View key={`scoop-${index}`} style={styles.flavorRow}>
+                    <Text style={styles.flavorNumber}>SCOOP {index + 1}</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.flavors}
+                    >
+                      {iceCreamFlavors.map((item) => (
+                        <Pressable
+                          key={item}
+                          onPress={() =>
+                            setScoopFlavors((current) =>
+                              current.map((currentFlavor, scoopIndex) =>
+                                scoopIndex === index ? item : currentFlavor,
+                              ),
+                            )
+                          }
+                          style={[
+                            styles.flavorChip,
+                            flavor === item && styles.flavorChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.flavorText,
+                              flavor === item && styles.flavorTextActive,
+                            ]}
+                          >
+                            {item}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ))}
+                <Pressable
+                  disabled={!canAddIceCream}
+                  onPress={addIceCream}
+                  style={[
+                    styles.addCustom,
+                    !canAddIceCream && styles.addCustomDisabled,
+                  ]}
+                >
+                  <Text style={styles.addCustomText}>
+                    Add {scoopFlavors.length} scoop
+                    {scoopFlavors.length === 1 ? "" : "s"} ·{" "}
+                    {currency(scoopFlavors.length * 350)}
+                  </Text>
+                  <Text style={styles.addCustomIcon}>+</Text>
                 </Pressable>
-              ))}
-            </ScrollView>
-            <View style={styles.tableGrid}>
-              {visibleTables.map((table) => {
-                const colors = statusColors[table.status];
+              </View>
+            )}
+            <View style={[styles.itemGrid, wide && styles.itemGridWide]}>
+              {visibleItems.map((item, index) => {
+                const quantity =
+                  cart.find((line) => line.itemId === item.id)?.quantity ?? 0;
                 return (
-                  <Pressable key={table.number} onPress={() => setSelectedTable(table.number)} style={({ pressed }) => [styles.tableCard, wide && styles.tableCardWide, pressed && styles.cardPressed]}>
-                    <View style={styles.tableTop}><Text style={styles.tableNumber}>T{String(table.number).padStart(2, '0')}</Text><Text style={styles.seatCount}>{table.seats} seats</Text></View>
-                    <View style={[styles.statusPill, { backgroundColor: colors.bg }]}><View style={[styles.statusDot, { backgroundColor: colors.dot }]} /><Text style={[styles.statusText, { color: colors.text }]}>{table.status}</Text></View>
-                    <View style={styles.tableBottom}><Text style={styles.orderId}>{table.order ?? 'Tap to start'}</Text><Text style={styles.tableAmount}>{table.total ? currency(table.total) : '＋'}</Text></View>
-                  </Pressable>
+                  <View
+                    key={item.id}
+                    style={[styles.menuItem, wide && styles.menuItemWide]}
+                  >
+                    <View
+                      style={[
+                        styles.itemColor,
+                        index % 2
+                          ? styles.itemColorBlue
+                          : styles.itemColorGreen,
+                      ]}
+                    >
+                      <Text style={styles.itemInitial}>
+                        {item.name.slice(0, 1)}
+                      </Text>
+                    </View>
+                    <View style={styles.itemCopy}>
+                      <Text style={styles.itemName}>{item.name}</Text>
+                      <Text style={styles.itemDetail}>{item.detail}</Text>
+                    </View>
+                    <Text style={styles.itemPrice}>{currency(item.price)}</Text>
+                    {quantity > 0 ? (
+                      <View style={styles.quantityControl}>
+                        <Pressable
+                          onPress={() => updateQuantity(item.id, -1)}
+                          accessibilityLabel={`Remove one ${item.name}`}
+                          style={styles.quantityButton}
+                        >
+                          <Text style={styles.quantityButtonText}>−</Text>
+                        </Pressable>
+                        <Text style={styles.quantity}>{quantity}</Text>
+                        <Pressable
+                          onPress={() => updateQuantity(item.id, 1)}
+                          accessibilityLabel={`Add one ${item.name}`}
+                          style={styles.quantityButton}
+                        >
+                          <Text style={styles.quantityButtonText}>+</Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable
+                        accessibilityLabel={`Add ${item.name}`}
+                        onPress={() => updateQuantity(item.id, 1)}
+                        style={styles.addButton}
+                      >
+                        <Text style={styles.addButtonText}>+</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 );
               })}
             </View>
           </View>
 
-          <View style={[styles.sideColumn, wide && styles.sideColumnWide]}>
-            <View style={styles.sectionHeading}>
-              <View><Text style={styles.sectionEyebrow}>PASS WINDOW</Text><Text style={styles.sectionTitle}>Kitchen flow</Text></View>
-              <View style={styles.queueCount}><Text style={styles.queueCountText}>{liveCount} LIVE</Text></View>
+          <View style={[styles.cartColumn, wide && styles.cartColumnWide]}>
+            <View style={styles.cartHeader}>
+              <View>
+                <Text style={styles.cartEyebrow}>CURRENT ORDER</Text>
+                <Text style={styles.cartTitle}>Your selection</Text>
+              </View>
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{itemCount}</Text>
+              </View>
             </View>
-            <View style={styles.queueList}>
-              {tickets.slice(0, 3).map((ticket) => <KitchenPreview key={ticket.id} ticket={ticket} />)}
+            {cart.length ? (
+              <View style={styles.cartItems}>
+                {cart.map((item) => (
+                  <View key={item.itemId} style={styles.cartItem}>
+                    <View style={styles.cartItemCopy}>
+                      <Text style={styles.cartItemName}>{item.name}</Text>
+                    </View>
+                    <View style={styles.cartItemActions}>
+                      <Text style={styles.cartItemPrice}>
+                        {currency(item.quantity * item.price)}
+                      </Text>
+                      <View style={styles.quantityControl}>
+                        <Pressable
+                          onPress={() => updateQuantity(item.itemId, -1)}
+                          accessibilityLabel={`Remove one ${item.name}`}
+                          style={styles.quantityButton}
+                        >
+                          <Text style={styles.quantityButtonText}>−</Text>
+                        </Pressable>
+                        <Text style={styles.quantity}>{item.quantity}</Text>
+                        <Pressable
+                          onPress={() => updateQuantity(item.itemId, 1)}
+                          accessibilityLabel={`Add one ${item.name}`}
+                          style={styles.quantityButton}
+                        >
+                          <Text style={styles.quantityButtonText}>+</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyCart}>
+                <Text style={styles.emptyCartTitle}>Nothing selected yet</Text>
+                <Text style={styles.emptyCartText}>
+                  Tap + on menu items to start an order.
+                </Text>
+              </View>
+            )}
+            <View style={styles.cartTotal}>
+              <Text style={styles.totalLabel}>Order total</Text>
+              <Text style={styles.totalValue}>{currency(total)}</Text>
             </View>
-            <View style={styles.handoffNote}>
-              <Text style={styles.handoffMark}>↗</Text>
-              <View style={styles.handoffCopy}><Text style={styles.handoffTitle}>One order, two stations</Text><Text style={styles.handoffText}>Confirmed orders reach the kitchen and counter together.</Text></View>
-            </View>
+            <Pressable
+              disabled={!cart.length}
+              onPress={() => setTablePickerOpen(true)}
+              style={[
+                styles.checkoutButton,
+                !cart.length && styles.checkoutDisabled,
+              ]}
+            >
+              <Text style={styles.checkoutText}>Choose table</Text>
+              <Text style={styles.checkoutArrow}>→</Text>
+            </Pressable>
           </View>
         </View>
-
-        <View style={styles.footerNote}><Text style={styles.footerNoteText}>SHIFT SNAPSHOT · UPDATED JUST NOW</Text><Text style={styles.footerHours}>Kitchen open until 10:30 pm</Text></View>
       </ScrollView>
-      <OrderComposer visible={selectedTable !== null} table={selectedTable} onClose={() => setSelectedTable(null)} onConfirm={sendOrder} />
+
+      <Modal
+        visible={tablePickerOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTablePickerOpen(false)}
+      >
+        <SafeAreaView style={styles.modalSafe}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.kicker}>SEND ORDER</Text>
+              <Text style={styles.modalTitle}>Choose a table</Text>
+            </View>
+            <Pressable
+              onPress={() => setTablePickerOpen(false)}
+              style={styles.closeButton}
+            >
+              <Text style={styles.closeText}>×</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.modalSubtitle}>
+            {itemCount} selected item{itemCount === 1 ? "" : "s"} ·{" "}
+            {currency(total)}
+          </Text>
+          <ScrollView contentContainerStyle={styles.tableList}>
+            {tables.map((table) => (
+              <Pressable
+                key={table.number}
+                onPress={() => {
+                  setConfirmTable(table.number);
+                  setTablePickerOpen(false);
+                }}
+                style={styles.tableOption}
+              >
+                <View style={styles.tableNumber}>
+                  <Text style={styles.tableNumberText}>
+                    {String(table.number).padStart(2, "0")}
+                  </Text>
+                </View>
+                <View style={styles.tableCopy}>
+                  <Text style={styles.tableName}>Table {table.number}</Text>
+                  <Text style={styles.tableStatus}>
+                    {table.seats} seats · {table.status}
+                  </Text>
+                </View>
+                <Text style={styles.tableArrow}>→</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+      <Modal
+        visible={confirmTable !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          setConfirmTable(null);
+          setTablePickerOpen(true);
+        }}
+      >
+        <SafeAreaView style={styles.modalSafe}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.kicker}>WAITER CONFIRMATION</Text>
+              <Text style={styles.modalTitle}>Confirm this order?</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setConfirmTable(null);
+                setTablePickerOpen(true);
+              }}
+              style={styles.closeButton}
+            >
+              <Text style={styles.closeText}>×</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.modalSubtitle}>
+            Table {confirmTable} · {staffName || "Waiter"}
+          </Text>
+          <ScrollView contentContainerStyle={styles.confirmItems}>
+            {cart.map((item) => (
+              <View key={item.itemId} style={styles.confirmItem}>
+                <View style={styles.confirmItemCopy}>
+                  <Text style={styles.confirmItemName}>{item.name}</Text>
+                  <Text style={styles.confirmItemPrice}>
+                    {currency(item.quantity * item.price)}
+                  </Text>
+                </View>
+                <View style={styles.quantityControl}>
+                  <Pressable
+                    onPress={() => updateQuantity(item.itemId, -1)}
+                    accessibilityLabel={`Remove one ${item.name}`}
+                    style={styles.quantityButton}
+                  >
+                    <Text style={styles.quantityButtonText}>−</Text>
+                  </Pressable>
+                  <Text style={styles.quantity}>{item.quantity}</Text>
+                  <Pressable
+                    onPress={() => updateQuantity(item.itemId, 1)}
+                    accessibilityLabel={`Add one ${item.name}`}
+                    style={styles.quantityButton}
+                  >
+                    <Text style={styles.quantityButtonText}>+</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+          <View style={styles.confirmFooter}>
+            <View style={styles.confirmTotal}>
+              <Text style={styles.totalLabel}>Order total</Text>
+              <Text style={styles.totalValue}>{currency(total)}</Text>
+            </View>
+            <Pressable
+              onPress={() => setConfirmTable(null)}
+              style={styles.backButton}
+            >
+              <Text style={styles.backButtonText}>Edit menu</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setConfirmTable(null);
+                setTablePickerOpen(true);
+              }}
+              style={styles.backButton}
+            >
+              <Text style={styles.backButtonText}>Back to tables</Text>
+            </Pressable>
+            <Pressable
+              disabled={confirmTable === null || !cart.length}
+              onPress={() => {
+                if (confirmTable !== null) sendOrder(confirmTable);
+              }}
+              style={[
+                styles.checkoutButton,
+                (confirmTable === null || !cart.length) &&
+                  styles.checkoutDisabled,
+              ]}
+            >
+              <Text style={styles.checkoutText}>Confirm and send order</Text>
+              <Text style={styles.checkoutArrow}>→</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function Metric({ label, value, note, accent }: { label: string; value: string; note: string; accent: string }) {
-  return (
-    <View style={styles.metricCard}>
-      <View style={[styles.metricAccent, { backgroundColor: accent }]} />
-      <View style={styles.metricContent}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricNote}>{note}</Text></View>
-    </View>
-  );
-}
-
-function KitchenPreview({ ticket }: { ticket: KitchenTicket }) {
-  const statusStyle = ticket.status === 'New' ? styles.ticketNew : ticket.status === 'Ready' ? styles.ticketReady : styles.ticketPreparing;
-  const label = ticket.status === 'New' ? 'JUST IN' : ticket.status === 'Ready' ? 'READY' : 'COOKING';
-  return (
-    <View style={styles.ticketCard}>
-      <View style={styles.ticketHeader}><Text style={styles.ticketTable}>Table {ticket.table}</Text><Text style={styles.ticketAge}>{ticket.age}</Text></View>
-      <Text style={styles.ticketItems}>{ticket.items.map((item) => `${item.quantity} × ${item.name}`).join(' · ')}</Text>
-      <View style={styles.ticketFooter}><Text style={styles.ticketId}>{ticket.id} · {ticket.waiter}</Text><Text style={[styles.ticketStatus, statusStyle]}>{label}</Text></View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: palette.paper },
-  content: { paddingHorizontal: 20, paddingBottom: 30 },
-  wideContent: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 42 },
-  topBar: { minHeight: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: palette.line },
-  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  brandMark: { width: 36, height: 36, borderRadius: 18, backgroundColor: palette.green, alignItems: 'center', justifyContent: 'center' },
-  brandMarkText: { color: '#F5F1E5', fontFamily: 'Georgia', fontSize: 22 },
-  brandName: { color: palette.ink, fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
-  brandCaption: { color: palette.muted, fontSize: 8, fontWeight: '700', letterSpacing: 0.8, marginTop: 3 },
-  shiftTag: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: palette.line, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 18 },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#61966D' },
-  shiftText: { color: palette.muted, fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
-  greetingRow: { paddingTop: 24, paddingBottom: 20, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
-  greetingCopy: { flex: 1 },
-  dateText: { color: palette.amber, fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
-  greeting: { color: palette.ink, fontFamily: 'Georgia', fontSize: 29, marginTop: 6 },
-  subGreeting: { color: palette.muted, fontSize: 12, marginTop: 6 },
-  newOrderButton: { minHeight: 42, borderRadius: 7, backgroundColor: palette.green, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14 },
-  newOrderPlus: { color: '#E9E4D5', fontSize: 20, lineHeight: 22 },
-  newOrderText: { color: palette.white, fontSize: 12, fontWeight: '700' },
-  metrics: { gap: 9, marginBottom: 26 },
-  metricsWide: { flexDirection: 'row' },
-  metricCard: { flex: 1, minHeight: 90, flexDirection: 'row', backgroundColor: palette.white, borderWidth: 1, borderColor: palette.line, borderRadius: 7, overflow: 'hidden' },
-  metricAccent: { width: 3 },
-  metricContent: { paddingHorizontal: 14, paddingVertical: 11 },
-  metricLabel: { color: palette.muted, fontSize: 9, fontWeight: '800', letterSpacing: 0.9 },
-  metricValue: { color: palette.ink, fontSize: 23, fontWeight: '700', marginTop: 3 },
-  metricNote: { color: palette.muted, fontSize: 10, marginTop: 3 },
-  mainColumns: { gap: 28 },
-  mainColumnsWide: { flexDirection: 'row', alignItems: 'flex-start' },
-  floorColumn: { flex: 1.55, minWidth: 0 },
-  sideColumn: { flex: 1, minWidth: 0, paddingTop: 4 },
-  sideColumnWide: { paddingTop: 0 },
-  sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 },
-  sectionEyebrow: { color: palette.amber, fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
-  sectionTitle: { color: palette.ink, fontFamily: 'Georgia', fontSize: 23, marginTop: 3 },
-  sectionCount: { color: palette.muted, fontFamily: 'System', fontSize: 13 },
-  occupancy: { flexDirection: 'row', alignItems: 'baseline', paddingBottom: 3 },
-  occupancyStrong: { color: palette.ink, fontSize: 13, fontWeight: '800' },
-  occupancyText: { color: palette.muted, fontSize: 10 },
-  filters: { flexDirection: 'row', gap: 6, paddingBottom: 12 },
-  filterChip: { paddingHorizontal: 11, paddingVertical: 7, borderWidth: 1, borderColor: palette.line, borderRadius: 18 },
-  filterChipActive: { backgroundColor: palette.green, borderColor: palette.green },
-  filterText: { color: palette.muted, fontSize: 10, fontWeight: '700' },
-  filterTextActive: { color: palette.white },
-  tableGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  tableCard: { width: '48%', flexGrow: 1, minWidth: 135, backgroundColor: palette.white, borderWidth: 1, borderColor: palette.line, borderRadius: 7, padding: 12, minHeight: 112, justifyContent: 'space-between' },
-  tableCardWide: { width: '31%', minWidth: 150, flexGrow: 1 },
-  cardPressed: { opacity: 0.75, transform: [{ scale: 0.985 }] },
-  tableTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  tableNumber: { color: palette.ink, fontSize: 16, fontWeight: '800' },
-  seatCount: { color: palette.muted, fontSize: 10 },
-  statusPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 16, marginTop: 12 },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 9, fontWeight: '700' },
-  tableBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 9 },
-  orderId: { color: palette.muted, fontSize: 10 },
-  tableAmount: { color: palette.ink, fontSize: 11, fontWeight: '800' },
-  queueCount: { backgroundColor: palette.paleAmber, borderRadius: 15, paddingHorizontal: 9, paddingVertical: 5 },
-  queueCountText: { color: '#9B5B31', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  queueList: { gap: 8 },
-  ticketCard: { backgroundColor: palette.white, borderWidth: 1, borderColor: palette.line, borderRadius: 7, padding: 12 },
-  ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ticketTable: { color: palette.ink, fontSize: 13, fontWeight: '800' },
-  ticketAge: { color: palette.muted, fontSize: 10 },
-  ticketItems: { color: '#526057', fontSize: 11, lineHeight: 17, marginTop: 8 },
-  ticketFooter: { borderTopWidth: 1, borderColor: palette.line, marginTop: 10, paddingTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ticketId: { color: palette.muted, fontSize: 9 },
-  ticketStatus: { fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
-  ticketNew: { color: palette.amber },
-  ticketPreparing: { color: palette.blue },
-  ticketReady: { color: palette.green },
-  handoffNote: { marginTop: 12, padding: 12, borderRadius: 7, backgroundColor: '#EAEDE4', flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  handoffMark: { color: palette.green, fontSize: 18 },
-  handoffCopy: { flex: 1 },
-  handoffTitle: { color: palette.ink, fontSize: 11, fontWeight: '800' },
-  handoffText: { color: palette.muted, fontSize: 10, lineHeight: 15, marginTop: 3 },
-  footerNote: { marginTop: 26, paddingTop: 12, borderTopWidth: 1, borderColor: palette.line, flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 },
-  footerNoteText: { color: palette.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8 },
-  footerHours: { color: palette.muted, fontSize: 9 },
+  safe: { flex: 1, backgroundColor: colors.paper },
+  content: { paddingHorizontal: 19, paddingBottom: 32 },
+  wideContent: {
+    width: "100%",
+    maxWidth: 1220,
+    alignSelf: "center",
+    paddingHorizontal: 36,
+  },
+  header: {
+    minHeight: 68,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderColor: colors.line,
+    gap: 8,
+  },
+  brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandMark: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.green,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandMarkText: { color: colors.white, fontSize: 22, fontWeight: "800" },
+  brandName: {
+    color: colors.ink,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+  brandCaption: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  account: { flexDirection: "row", alignItems: "center", gap: 6 },
+  accountDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.green,
+  },
+  accountText: {
+    color: colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+  signOut: {
+    color: colors.deepBlue,
+    fontSize: 12,
+    fontWeight: "800",
+    marginLeft: 5,
+  },
+  heading: {
+    paddingTop: 24,
+    paddingBottom: 19,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 12,
+  },
+  headingText: { flex: 1 },
+  kicker: {
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+  },
+  title: { color: colors.ink, fontSize: 30, fontWeight: "800", marginTop: 4 },
+  subtitle: { color: colors.muted, fontSize: 14, marginTop: 6 },
+  menuCount: { alignItems: "flex-end", paddingBottom: 3 },
+  menuCountValue: { color: colors.ink, fontSize: 22, fontWeight: "800" },
+  menuCountLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+    marginTop: 2,
+  },
+  categories: { gap: 8, paddingBottom: 17 },
+  categoryTab: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+  },
+  categoryTabActive: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
+  categoryText: { color: colors.muted, fontSize: 13, fontWeight: "700" },
+  categoryTextActive: { color: colors.white },
+  main: { gap: 22 },
+  mainWide: { flexDirection: "row", alignItems: "flex-start" },
+  menuColumn: { flex: 1.7, minWidth: 0 },
+  cartColumn: {
+    minWidth: 0,
+    borderTopWidth: 1,
+    borderColor: colors.line,
+    paddingTop: 15,
+  },
+  cartColumnWide: {
+    width: 340,
+    borderTopWidth: 0,
+    borderLeftWidth: 1,
+    paddingTop: 0,
+    paddingLeft: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: 11,
+  },
+  sectionTitle: { color: colors.ink, fontSize: 21, fontWeight: "800" },
+  sectionDetail: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  scoopBuilder: {
+    padding: 14,
+    backgroundColor: colors.paleBlue,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#C7E8F2",
+    marginBottom: 13,
+  },
+  builderHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  builderTitle: { color: colors.ink, fontSize: 16, fontWeight: "800" },
+  builderDetail: { color: colors.muted, fontSize: 12, marginTop: 3 },
+  stepper: {
+    minHeight: 38,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: colors.white,
+  },
+  stepButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepText: { color: colors.green, fontSize: 23, fontWeight: "700" },
+  stepCount: {
+    color: colors.ink,
+    minWidth: 20,
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  flavorRow: {
+    paddingTop: 9,
+    paddingBottom: 6,
+    borderTopWidth: 1,
+    borderColor: "#C7E8F2",
+    gap: 8,
+  },
+  flavorNumber: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+  },
+  flavors: { gap: 6 },
+  flavorChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: colors.white,
+    borderRadius: 7,
+  },
+  flavorChipActive: { backgroundColor: colors.green },
+  flavorText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  flavorTextActive: { color: colors.white },
+  addCustom: {
+    minHeight: 42,
+    marginTop: 9,
+    borderRadius: 8,
+    backgroundColor: colors.green,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+  },
+  addCustomDisabled: { opacity: 0.45 },
+  addCustomText: { color: colors.white, fontSize: 13, fontWeight: "800" },
+  addCustomIcon: { color: colors.white, fontSize: 21, lineHeight: 23 },
+  itemGrid: { gap: 9 },
+  itemGridWide: { flexDirection: "row", flexWrap: "wrap" },
+  menuItem: {
+    minHeight: 78,
+    padding: 11,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 9,
+    backgroundColor: colors.white,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  menuItemWide: { width: "48%", flexGrow: 1, minWidth: 260 },
+  itemColor: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  itemColorGreen: { backgroundColor: colors.paleGreen },
+  itemColorBlue: { backgroundColor: colors.paleBlue },
+  itemInitial: { color: colors.green, fontSize: 19, fontWeight: "900" },
+  itemCopy: { flex: 1 },
+  itemName: { color: colors.ink, fontSize: 14, fontWeight: "800" },
+  itemDetail: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  itemPrice: { color: colors.ink, fontSize: 13, fontWeight: "800" },
+  addButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    backgroundColor: colors.paleGreen,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addButtonText: {
+    color: colors.green,
+    fontSize: 23,
+    lineHeight: 26,
+    fontWeight: "700",
+  },
+  quantityControl: { flexDirection: "row", alignItems: "center", gap: 7 },
+  quantityButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.paleGreen,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quantityButtonText: { color: colors.green, fontSize: 19, fontWeight: "800" },
+  quantity: {
+    minWidth: 17,
+    color: colors.ink,
+    fontSize: 14,
+    textAlign: "center",
+    fontWeight: "800",
+  },
+  cartHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cartEyebrow: {
+    color: colors.deepBlue,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+  cartTitle: {
+    color: colors.ink,
+    fontSize: 20,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  cartBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.paleBlue,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cartBadgeText: { color: colors.deepBlue, fontSize: 13, fontWeight: "900" },
+  emptyCart: {
+    minHeight: 90,
+    justifyContent: "center",
+    borderBottomWidth: 1,
+    borderColor: colors.line,
+  },
+  emptyCartTitle: { color: colors.ink, fontSize: 14, fontWeight: "700" },
+  emptyCartText: { color: colors.muted, fontSize: 12, marginTop: 4 },
+  cartItems: { marginTop: 7 },
+  cartItem: {
+    minHeight: 56,
+    borderBottomWidth: 1,
+    borderColor: colors.line,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  cartItemCopy: { flex: 1 },
+  cartItemName: { color: colors.ink, fontSize: 13, fontWeight: "700" },
+  cartItemActions: { alignItems: "flex-end", gap: 5 },
+  cartItemPrice: { color: colors.ink, fontSize: 13, fontWeight: "800" },
+  cartTotal: {
+    minHeight: 55,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  totalLabel: { color: colors.muted, fontSize: 14, fontWeight: "700" },
+  totalValue: { color: colors.ink, fontSize: 21, fontWeight: "900" },
+  checkoutButton: {
+    minHeight: 50,
+    borderRadius: 9,
+    backgroundColor: colors.green,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+  checkoutDisabled: { opacity: 0.45 },
+  checkoutText: { color: colors.white, fontSize: 14, fontWeight: "800" },
+  checkoutArrow: { color: colors.white, fontSize: 18 },
+  modalSafe: { flex: 1, backgroundColor: colors.paper },
+  modalHeader: {
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalTitle: {
+    color: colors.ink,
+    fontSize: 27,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: colors.paleBlue,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeText: { color: colors.ink, fontSize: 27, lineHeight: 30 },
+  modalSubtitle: {
+    color: colors.muted,
+    fontSize: 14,
+    paddingHorizontal: 22,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  tableList: { paddingHorizontal: 22, paddingBottom: 24, gap: 9 },
+  tableOption: {
+    minHeight: 68,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    gap: 12,
+  },
+  tableNumber: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: colors.paleGreen,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tableNumberText: { color: colors.green, fontSize: 16, fontWeight: "900" },
+  tableCopy: { flex: 1 },
+  tableName: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  tableStatus: { color: colors.muted, fontSize: 12, marginTop: 3 },
+  tableArrow: { color: colors.deepBlue, fontSize: 19, fontWeight: "700" },
+  confirmItems: { paddingHorizontal: 22, paddingBottom: 20 },
+  confirmItem: {
+    minHeight: 72,
+    borderBottomWidth: 1,
+    borderColor: colors.line,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  confirmItemCopy: { flex: 1, gap: 4 },
+  confirmItemName: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  confirmItemPrice: { color: colors.muted, fontSize: 13, fontWeight: "700" },
+  confirmFooter: {
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderColor: colors.line,
+    gap: 9,
+  },
+  confirmTotal: {
+    minHeight: 44,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  backButton: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+  },
+  backButtonText: { color: colors.ink, fontSize: 14, fontWeight: "800" },
 });

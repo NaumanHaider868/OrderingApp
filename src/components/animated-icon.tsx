@@ -1,11 +1,11 @@
-import { Image } from 'expo-image';
-import * as SplashScreen from 'expo-splash-screen';
-import { useState } from 'react';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, Keyframe } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { Image } from "expo-image";
+import * as SplashScreen from "expo-splash-screen";
+import { useState } from "react";
+import { Dimensions, StyleSheet, Text, View } from "react-native";
+import Animated, { Easing, Keyframe } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 
-const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
+const INITIAL_SCALE_FACTOR = Dimensions.get("screen").height / 90;
 const DURATION = 600;
 
 export function AnimatedSplashOverlay() {
@@ -33,17 +33,25 @@ export function AnimatedSplashOverlay() {
     },
   });
 
-  const brand = <View style={styles.brandLockup}><View style={styles.brandMark}><Text style={styles.brandMarkText}>C</Text></View><Text style={styles.brandName}>CLOVER & ASH</Text></View>;
+  const brand = (
+    <View style={styles.brandLockup}>
+      <View style={styles.brandMark}>
+        <Text style={styles.brandMarkText}>M</Text>
+      </View>
+      <Text style={styles.brandName}>MEHAR JUICE</Text>
+    </View>
+  );
 
   return animate ? (
     <Animated.View
       entering={splashKeyframe.duration(DURATION).withCallback((finished) => {
-        'worklet';
+        "worklet";
         if (finished) {
           scheduleOnRN(setVisible, false);
         }
       })}
-      style={styles.splashOverlay}>
+      style={styles.splashOverlay}
+    >
       {brand}
     </Animated.View>
   ) : (
@@ -53,7 +61,8 @@ export function AnimatedSplashOverlay() {
           setAnimate(true);
         });
       }}
-      style={styles.splashOverlay}>
+      style={styles.splashOverlay}
+    >
       {brand}
     </View>
   );
@@ -88,23 +97,38 @@ const logoKeyframe = new Keyframe({
 
 const glowKeyframe = new Keyframe({
   0: {
-    transform: [{ rotateZ: '0deg' }],
+    transform: [{ rotateZ: "0deg" }],
   },
   100: {
-    transform: [{ rotateZ: '7200deg' }],
+    transform: [{ rotateZ: "7200deg" }],
   },
 });
 
 export function AnimatedIcon() {
   return (
     <View style={styles.iconContainer}>
-      <Animated.View entering={glowKeyframe.duration(60 * 1000 * 4)} style={styles.glow}>
-        <Image style={styles.glow} source={require('@/assets/images/logo-glow.png')} />
+      <Animated.View
+        entering={glowKeyframe.duration(60 * 1000 * 4)}
+        style={styles.glow}
+      >
+        <Image
+          style={styles.glow}
+          source={require("@/assets/images/logo-glow.png")}
+        />
       </Animated.View>
 
-      <Animated.View entering={keyframe.duration(DURATION)} style={styles.background} />
-      <Animated.View style={styles.imageContainer} entering={logoKeyframe.duration(DURATION)}>
-        <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />
+      <Animated.View
+        entering={keyframe.duration(DURATION)}
+        style={styles.background}
+      />
+      <Animated.View
+        style={styles.imageContainer}
+        entering={logoKeyframe.duration(DURATION)}
+      >
+        <Image
+          style={styles.image}
+          source={require("@/assets/images/expo-logo.png")}
+        />
       </Animated.View>
     </View>
   );
@@ -112,17 +136,17 @@ export function AnimatedIcon() {
 
 const styles = StyleSheet.create({
   imageContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   glow: {
     width: 201,
     height: 201,
-    position: 'absolute',
+    position: "absolute",
   },
   iconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     width: 128,
     height: 128,
     zIndex: 100,
@@ -136,17 +160,17 @@ const styles = StyleSheet.create({
     experimental_backgroundImage: `linear-gradient(180deg, #3C9FFE, #0274DF)`,
     width: 128,
     height: 128,
-    position: 'absolute',
+    position: "absolute",
   },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#183C35',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#183C35",
+    alignItems: "center",
+    justifyContent: "center",
     zIndex: 1000,
   },
   brandLockup: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: 12,
   },
   brandMark: {
@@ -154,19 +178,19 @@ const styles = StyleSheet.create({
     height: 66,
     borderRadius: 33,
     borderWidth: 1,
-    borderColor: '#A9B8A7',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "#A9B8A7",
+    alignItems: "center",
+    justifyContent: "center",
   },
   brandMarkText: {
-    color: '#F5F1E5',
-    fontFamily: 'Georgia',
+    color: "#F5F1E5",
+    fontFamily: "Georgia",
     fontSize: 40,
   },
   brandName: {
-    color: '#F5F1E5',
+    color: "#F5F1E5",
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 2,
   },
 });
