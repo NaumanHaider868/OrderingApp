@@ -16,6 +16,7 @@ import {
     KitchenTicket,
     menuCategories,
     MenuCategory,
+    MenuItem,
     menuItems,
     OrderLine,
 } from "@/data/mock-restaurant";
@@ -46,9 +47,11 @@ export default function MenuScreen() {
     setRole,
     setStaffName,
   } = useRestaurantState();
-  const [category, setCategory] = useState<MenuCategory>("Ice Cream");
+  const [category, setCategory] = useState<MenuCategory>("Breakfast");
   const [cart, setCart] = useState<OrderLine[]>([]);
   const [scoopFlavors, setScoopFlavors] = useState([""]);
+  const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [confirmTable, setConfirmTable] = useState<number | null>(null);
   const [wide, setWide] = useState(false);
@@ -59,6 +62,9 @@ export default function MenuScreen() {
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const canAddIceCream = scoopFlavors.every(Boolean);
   const visibleItems = menuItems.filter((item) => item.category === category);
+  const selectedOption =
+    customizeItem?.options?.find((option) => option.id === selectedOptionId) ??
+    null;
 
   function updateQuantity(itemId: string, change: number) {
     const menuItem = menuItems.find((item) => item.id === itemId);
@@ -99,6 +105,42 @@ export default function MenuScreen() {
       ];
     });
     setScoopFlavors([""]);
+  }
+
+  function addConfiguredItem() {
+    if (!customizeItem || !selectedOption) return;
+    const itemId = `${customizeItem.id}-${selectedOption.id}`;
+    const optionName = selectedOption.label.split(" · PKR")[0];
+    setCart((current) => {
+      const existing = current.find((item) => item.itemId === itemId);
+      if (existing) {
+        return current.map((item) =>
+          item.itemId === itemId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        );
+      }
+      return [
+        ...current,
+        {
+          itemId,
+          name: `${customizeItem.name} · ${optionName}`,
+          quantity: 1,
+          price: selectedOption.price,
+        },
+      ];
+    });
+    setCustomizeItem(null);
+    setSelectedOptionId(null);
+  }
+
+  function selectMenuItem(item: MenuItem) {
+    if (item.options?.length) {
+      setCustomizeItem(item);
+      setSelectedOptionId(item.options[0].id);
+      return;
+    }
+    updateQuantity(item.id, 1);
   }
 
   function sendOrder(tableNumber: number) {
@@ -321,47 +363,65 @@ export default function MenuScreen() {
                     <View
                       style={[
                         styles.itemColor,
-                        index % 2
-                          ? styles.itemColorBlue
-                          : styles.itemColorGreen,
+                        index % 2 ? styles.itemColorBlue : styles.itemColorGreen,
                       ]}
                     >
                       <Text style={styles.itemInitial}>
                         {item.name.slice(0, 1)}
                       </Text>
                     </View>
-                    <View style={styles.itemCopy}>
-                      <Text style={styles.itemName}>{item.name}</Text>
-                      <Text style={styles.itemDetail}>{item.detail}</Text>
+                    <View style={styles.itemBody}>
+                      <Text style={styles.itemName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.itemDetail} numberOfLines={2}>
+                        {item.detail}
+                      </Text>
                     </View>
-                    <Text style={styles.itemPrice}>{currency(item.price)}</Text>
-                    {quantity > 0 ? (
-                      <View style={styles.quantityControl}>
+                    <View style={styles.itemActions}>
+                      <Text style={styles.itemPrice}>
+                        {item.options
+                          ? `From ${currency(item.price)}`
+                          : currency(item.price)}
+                      </Text>
+                      {item.options ? (
                         <Pressable
-                          onPress={() => updateQuantity(item.id, -1)}
-                          accessibilityLabel={`Remove one ${item.name}`}
-                          style={styles.quantityButton}
+                          accessibilityLabel={`Choose options for ${item.name}`}
+                          onPress={() => selectMenuItem(item)}
+                          style={styles.configureButton}
                         >
-                          <Text style={styles.quantityButtonText}>−</Text>
+                          <Text style={styles.configureButtonText}>
+                            Choose options
+                          </Text>
                         </Pressable>
-                        <Text style={styles.quantity}>{quantity}</Text>
+                      ) : quantity > 0 ? (
+                        <View style={styles.quantityControl}>
+                          <Pressable
+                            onPress={() => updateQuantity(item.id, -1)}
+                            accessibilityLabel={`Remove one ${item.name}`}
+                            style={styles.quantityButton}
+                          >
+                            <Text style={styles.quantityButtonText}>−</Text>
+                          </Pressable>
+                          <Text style={styles.quantity}>{quantity}</Text>
+                          <Pressable
+                            onPress={() => updateQuantity(item.id, 1)}
+                            accessibilityLabel={`Add one ${item.name}`}
+                            style={styles.quantityButton}
+                          >
+                            <Text style={styles.quantityButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      ) : (
                         <Pressable
-                          onPress={() => updateQuantity(item.id, 1)}
-                          accessibilityLabel={`Add one ${item.name}`}
-                          style={styles.quantityButton}
+                          accessibilityLabel={`Add ${item.name}`}
+                          onPress={() => selectMenuItem(item)}
+                          style={styles.addButton}
                         >
-                          <Text style={styles.quantityButtonText}>+</Text>
+                          <Text style={styles.addButtonText}>+</Text>
                         </Pressable>
-                      </View>
-                    ) : (
-                      <Pressable
-                        accessibilityLabel={`Add ${item.name}`}
-                        onPress={() => updateQuantity(item.id, 1)}
-                        style={styles.addButton}
-                      >
-                        <Text style={styles.addButtonText}>+</Text>
-                      </Pressable>
-                    )}
+                      )}
+                    </View>
                   </View>
                 );
               })}
@@ -436,6 +496,73 @@ export default function MenuScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={customizeItem !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setCustomizeItem(null)}
+      >
+        <SafeAreaView style={styles.modalSafe}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.kicker}>CUSTOMIZE ORDER</Text>
+              <Text style={styles.modalTitle}>{customizeItem?.name}</Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Close options"
+              onPress={() => setCustomizeItem(null)}
+              style={styles.closeButton}
+            >
+              <Text style={styles.closeText}>×</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.modalSubtitle}>
+            {customizeItem?.detail}
+          </Text>
+          <ScrollView contentContainerStyle={styles.optionList}>
+            {customizeItem?.options?.map((option) => {
+              const selected = selectedOptionId === option.id;
+              return (
+                <Pressable
+                  key={option.id}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  onPress={() => setSelectedOptionId(option.id)}
+                  style={[
+                    styles.optionRow,
+                    selected && styles.optionRowSelected,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.optionIndicator,
+                      selected && styles.optionIndicatorSelected,
+                    ]}
+                  />
+                  <Text style={styles.optionLabel}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <View style={styles.optionFooter}>
+            <Pressable
+              disabled={!selectedOption}
+              onPress={addConfiguredItem}
+              style={[
+                styles.checkoutButton,
+                !selectedOption && styles.checkoutDisabled,
+              ]}
+            >
+              <Text style={styles.checkoutText}>
+                Add to order
+                {selectedOption ? ` · ${currency(selectedOption.price)}` : ""}
+              </Text>
+              <Text style={styles.checkoutArrow}>+</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       <Modal
         visible={tablePickerOpen}
@@ -788,7 +915,7 @@ const styles = StyleSheet.create({
   itemGrid: { gap: 9 },
   itemGridWide: { flexDirection: "row", flexWrap: "wrap" },
   menuItem: {
-    minHeight: 78,
+    minHeight: 82,
     padding: 11,
     borderWidth: 1,
     borderColor: colors.line,
@@ -809,15 +936,15 @@ const styles = StyleSheet.create({
   itemColorGreen: { backgroundColor: colors.paleGreen },
   itemColorBlue: { backgroundColor: colors.paleBlue },
   itemInitial: { color: colors.green, fontSize: 19, fontWeight: "900" },
-  itemCopy: { flex: 1 },
+  itemBody: { flex: 1, minWidth: 0, gap: 4 },
   itemName: { color: colors.ink, fontSize: 14, fontWeight: "800" },
   itemDetail: {
     color: colors.muted,
     fontSize: 12,
     lineHeight: 17,
-    marginTop: 3,
   },
   itemPrice: { color: colors.ink, fontSize: 13, fontWeight: "800" },
+  itemActions: { alignItems: "flex-end", gap: 7 },
   addButton: {
     width: 36,
     height: 36,
@@ -832,6 +959,15 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     fontWeight: "700",
   },
+  configureButton: {
+    minHeight: 36,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: colors.paleGreen,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  configureButtonText: { color: colors.green, fontSize: 12, fontWeight: "800" },
   quantityControl: { flexDirection: "row", alignItems: "center", gap: 7 },
   quantityButton: {
     width: 30,
@@ -946,6 +1082,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     marginTop: 8,
     marginBottom: 10,
+  },
+  optionList: { paddingHorizontal: 22, paddingBottom: 24, gap: 9 },
+  optionRow: {
+    minHeight: 62,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  optionRowSelected: {
+    borderColor: colors.green,
+    backgroundColor: colors.paleGreen,
+  },
+  optionIndicator: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: colors.muted,
+  },
+  optionIndicatorSelected: { borderWidth: 5, borderColor: colors.green },
+  optionLabel: { flex: 1, color: colors.ink, fontSize: 14, fontWeight: "700" },
+  optionFooter: {
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderColor: colors.line,
   },
   tableList: { paddingHorizontal: 22, paddingBottom: 24, gap: 9 },
   tableOption: {
